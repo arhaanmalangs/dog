@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jumping Cat</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #3a3f70, #131529 55%, #080913);
+      color: #eef1ff;
+    }
+
+    .game-shell {
+      width: min(92vw, 880px);
+      text-align: center;
+      user-select: none;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      letter-spacing: 0.03em;
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: #cfd7ff;
+    }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 16px;
+      border: 2px solid #6973ff;
+      background: linear-gradient(#5a7de8 0 70%, #3d8d47 70%);
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .stats {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      font-weight: 600;
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 0.95rem;
+      color: #aab7ff;
+    }
+  </style>
+</head>
+<body>
+  <main class="game-shell">
+    <h1>🐱 Jumping Cat</h1>
+    <p>Press <strong>Space</strong> (or tap) to jump over obstacles and keep running!</p>
+    <canvas id="game" width="960" height="540" aria-label="Jumping cat game"></canvas>
+    <div class="stats">
+      <div>Score: <span id="score">0</span></div>
+      <div>Best: <span id="best">0</span></div>
+    </div>
+    <div class="hint" id="hint">Press Space to start</div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const hintEl = document.getElementById('hint');
+
+    const gravity = 0.9;
+    const jumpForce = 18;
+    const groundY = canvas.height * 0.7;
+
+    const cat = {
+      x: 120,
+      y: groundY - 72,
+      width: 84,
+      height: 72,
+      velocityY: 0,
+      onGround: true,
+      legTick: 0,
+    };
+
+    const clouds = Array.from({ length: 5 }, (_, i) => ({
+      x: i * 220 + 60,
+      y: 70 + Math.random() * 120,
+      speed: 0.3 + Math.random() * 0.5,
+      size: 30 + Math.random() * 35,
+    }));
+
+    let obstacles = [];
+    let frame = 0;
+    let score = 0;
+    let best = Number(localStorage.getItem('jumping-cat-best') || 0);
+    let gameSpeed = 6;
+    let gameOver = false;
+    let started = false;
+
+    bestEl.textContent = String(best);
+
+    function spawnObstacle() {
+      const size = 34 + Math.random() * 42;
+      obstacles.push({
+        x: canvas.width + size,
+        y: groundY - size,
+        width: size,
+        height: size,
+      });
+    }
+
+    function jump() {
+      if (!started) {
+        started = true;
+        hintEl.textContent = 'Jump to avoid boxes!';
+      }
+
+      if (gameOver) {
+        reset();
+        return;
+      }
+
+      if (cat.onGround) {
+        cat.velocityY = -jumpForce;
+        cat.onGround = false;
+      }
+    }
+
+    function reset() {
+      gameOver = false;
+      started = true;
+      obstacles = [];
+      score = 0;
+      gameSpeed = 6;
+      cat.y = groundY - cat.height;
+      cat.velocityY = 0;
+      cat.onGround = true;
+      hintEl.textContent = 'Jump to avoid boxes!';
+    }
+
+    function intersects(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
+    function update() {
+      frame += 1;
+
+      clouds.forEach((cloud) => {
+        cloud.x -= cloud.speed + gameSpeed * 0.05;
+        if (cloud.x < -cloud.size * 2) {
+          cloud.x = canvas.width + Math.random() * 120;
+          cloud.y = 60 + Math.random() * 140;
+        }
+      });
+
+      if (!started || gameOver) {
+        return;
+      }
+
+      cat.velocityY += gravity;
+      cat.y += cat.velocityY;
+
+      if (cat.y >= groundY - cat.height) {
+        cat.y = groundY - cat.height;
+        cat.velocityY = 0;
+        cat.onGround = true;
+      }
+
+      if (frame % Math.max(48, 110 - Math.floor(score / 6)) === 0) {
+        spawnObstacle();
+      }
+
+      obstacles.forEach((obstacle) => {
+        obstacle.x -= gameSpeed;
+      });
+
+      obstacles = obstacles.filter((obstacle) => obstacle.x + obstacle.width > -20);
+
+      const catHitBox = {
+        x: cat.x + 10,
+        y: cat.y + 8,
+        width: cat.width - 20,
+        height: cat.height - 12,
+      };
+
+      for (const obstacle of obstacles) {
+        if (intersects(catHitBox, obstacle)) {
+          gameOver = true;
+          hintEl.textContent = 'Game Over! Press Space or Tap to restart.';
+          if (score > best) {
+            best = score;
+            localStorage.setItem('jumping-cat-best', String(best));
+            bestEl.textContent = String(best);
+          }
+          break;
+        }
+      }
+
+      score += 1;
+      gameSpeed += 0.0015;
+      scoreEl.textContent = String(score);
+      cat.legTick += 0.24;
+    }
+
+    function drawCloud(cloud) {
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.beginPath();
+      ctx.arc(cloud.x, cloud.y, cloud.size, Math.PI * 0.5, Math.PI * 1.5);
+      ctx.arc(cloud.x + cloud.size, cloud.y - cloud.size * 0.45, cloud.size * 0.8, Math.PI, Math.PI * 2);
+      ctx.arc(cloud.x + cloud.size * 1.75, cloud.y, cloud.size * 0.9, Math.PI * 1.5, Math.PI * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawCat() {
+      const x = cat.x;
+      const y = cat.y;
+
+      // Body
+      ctx.fillStyle = '#f7a1bf';
+      ctx.fillRect(x + 14, y + 18, 58, 38);
+
+      // Head
+      ctx.fillStyle = '#ffc2d6';
+      ctx.fillRect(x + 58, y + 4, 26, 24);
+
+      // Ears
+      ctx.fillStyle = '#ff8fb4';
+      ctx.beginPath();
+      ctx.moveTo(x + 62, y + 5);
+      ctx.lineTo(x + 67, y - 6);
+      ctx.lineTo(x + 72, y + 5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x + 76, y + 5);
+      ctx.lineTo(x + 82, y - 6);
+      ctx.lineTo(x + 85, y + 5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Face
+      ctx.fillStyle = '#3e2443';
+      ctx.fillRect(x + 66, y + 13, 3, 3);
+      ctx.fillRect(x + 76, y + 13, 3, 3);
+      ctx.fillRect(x + 71, y + 18, 4, 3);
+
+      // Tail
+      ctx.fillStyle = '#f08db1';
+      ctx.fillRect(x + 4, y + 22, 14, 8);
+      ctx.fillRect(x, y + 16, 8, 8);
+
+      // Legs
+      const legOffset = Math.sin(cat.legTick) * 3;
+      ctx.fillStyle = '#e1779f';
+      ctx.fillRect(x + 22, y + 54, 8, 18 - legOffset);
+      ctx.fillRect(x + 42, y + 54, 8, 18 + legOffset);
+      ctx.fillRect(x + 58, y + 54, 8, 18 - legOffset);
+    }
+
+    function drawObstacle(obstacle) {
+      ctx.fillStyle = '#5f2f1f';
+      ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      ctx.fillStyle = '#8a4a32';
+      ctx.fillRect(obstacle.x + 6, obstacle.y + 6, obstacle.width - 12, obstacle.height - 12);
+    }
+
+    function drawGround() {
+      ctx.fillStyle = '#2f7d3d';
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+      ctx.strokeStyle = '#235f2f';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < canvas.width; i += 40) {
+        const offset = (frame * gameSpeed * 0.35) % 40;
+        ctx.beginPath();
+        ctx.moveTo(i - offset, groundY + 30);
+        ctx.lineTo(i + 10 - offset, groundY + 22);
+        ctx.stroke();
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Sky gradient
+      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+      sky.addColorStop(0, '#89b2ff');
+      sky.addColorStop(1, '#bfd6ff');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, groundY);
+
+      clouds.forEach(drawCloud);
+      drawGround();
+      obstacles.forEach(drawObstacle);
+      drawCat();
+
+      if (!started) {
+        ctx.fillStyle = 'rgba(10, 10, 28, 0.45)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 54px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Press Space to Start', canvas.width / 2, canvas.height / 2);
+      }
+
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(12, 7, 20, 0.52)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffe3f0';
+        ctx.font = 'bold 58px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 20);
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space' || event.code === 'ArrowUp') {
+        event.preventDefault();
+        jump();
+      }
+    });
+
+    window.addEventListener('pointerdown', jump);
+
+    loop();
+  </script>
+</body>
+</html>
